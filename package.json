@@ -1,0 +1,24 @@
+{
+  "name": "audio-dictation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samwolf1982/audio-dictation.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/samwolf1982/audio-dictation/issues"
+  },
+  "homepage": "https://github.com/samwolf1982/audio-dictation#readme",
+  "dependencies": {
+    "fluent-ffmpeg": "^2.1.3",
+    "fs-extra": "^11.3.3"
+  }
+}
