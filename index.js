@@ -14,11 +14,12 @@ try {
     console.error(`❌ Error reading config.json: ${error.message}`);
     console.log('Creating default config.json...');
     config = {
-        audioFile: 'audio.mp3',
         whisperPrompt: '',
         repeatCount: 2,
         pauseBetweenRepeats: 3,
-        minSegmentLength: 0.4
+        pauseAfterSegment: 10,
+        minSegmentLength: 0.4,
+        device: 'cuda'
     };
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
@@ -26,38 +27,86 @@ try {
 // Параметри з конфігу
 const REPEAT_COUNT = config.repeatCount;
 const PAUSE_BETWEEN_REPEATS = config.pauseBetweenRepeats;
+const PAUSE_AFTER_SEGMENT = config.pauseAfterSegment || 10;
 const MIN_SEGMENT_LENGTH = config.minSegmentLength;
 const WHISPER_PROMPT = config.whisperPrompt;
+const DEVICE = config.device || 'cuda';
 
 // Папки
 const AUDIO_SOURCE_DIR = path.join(__dirname, 'audio-source');
 const RESULT_AUDIO_DIR = path.join(__dirname, 'result', 'audio');
+const RESULT_SHADOWING_DIR = path.join(__dirname, 'result', 'shadowing');
 const RESULT_TEXT_DIR = path.join(__dirname, 'result', 'text');
 const TEMP_DIR = path.join(__dirname, 'temp_segments');
+const SILENCE_FILE_SHORT = path.join(TEMP_DIR, 'silence_short.mp3');
+const SILENCE_FILE_LONG = path.join(TEMP_DIR, 'silence_long.mp3');
 
-// Вхідний файл (з audio-source/)
-const INPUT_FILENAME = config.audioFile;
-const INPUT_FILE = path.join(AUDIO_SOURCE_DIR, INPUT_FILENAME);
-
-// Знаходимо наступний номер для output файлів
-const nextNumber = getNextOutputNumber();
-if (nextNumber > 9999) {
-    console.error('❌ Error: Output file limit reached (9999). Please clean up result folder.');
+// Автоматично знаходимо найновіший .mp3 файл в audio-source/
+const latestAudioFile = findLatestMp3File(AUDIO_SOURCE_DIR);
+if (!latestAudioFile) {
+    console.error('❌ Error: No .mp3 files found in audio-source/ folder');
+    console.log('💡 Place your audio file (.mp3) in the audio-source/ folder');
     process.exit(1);
 }
 
-const OUTPUT_NUMBER = nextNumber.toString().padStart(4, '0');
-const OUTPUT_FILE = path.join(RESULT_AUDIO_DIR, `output_dictation_${OUTPUT_NUMBER}.mp3`);
-const TRANSCRIPT_FILE = path.join(RESULT_TEXT_DIR, `transcript_${OUTPUT_NUMBER}.txt`);
-const SILENCE_FILE = path.join(TEMP_DIR, 'silence.mp3');
+const INPUT_FILENAME = latestAudioFile.name;
+const INPUT_FILE = latestAudioFile.path;
+
+// Знаходимо наступний номер для output файлів (з датою)
+const outputInfo = getNextOutputNumber();
+if (outputInfo.number > 9999) {
+    console.error(`❌ Error: Daily output limit reached (9999 files for ${outputInfo.date}).`);
+    console.log('💡 Either wait for tomorrow or manually clean up result folder.');
+    process.exit(1);
+}
+
+const OUTPUT_DATE = outputInfo.date;
+const OUTPUT_NUMBER = outputInfo.number.toString().padStart(4, '0');
+const OUTPUT_FILENAME = `output_dictation_${OUTPUT_DATE}_${OUTPUT_NUMBER}.mp3`;
+const OUTPUT_FILE = path.join(RESULT_AUDIO_DIR, OUTPUT_FILENAME);
+const OUTPUT_SHADOWING_FILE = path.join(RESULT_SHADOWING_DIR, OUTPUT_FILENAME);
+const TRANSCRIPT_FILE = path.join(RESULT_TEXT_DIR, `transcript_${OUTPUT_DATE}_${OUTPUT_NUMBER}.txt`);
 
 // =======================================================
 
-// Функція для знаходження наступного номера файлу
+// Функція для знаходження найновішого .mp3 файлу
+function findLatestMp3File(dir) {
+    try {
+        const files = fs.readdirSync(dir);
+        const mp3Files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
+
+        if (mp3Files.length === 0) {
+            return null;
+        }
+
+        // Сортуємо по даті модифікації (найновіший перший)
+        const filesWithStats = mp3Files.map(f => {
+            const fullPath = path.join(dir, f);
+            const stats = fs.statSync(fullPath);
+            return {
+                name: f,
+                path: fullPath,
+                mtime: stats.mtime
+            };
+        });
+
+        filesWithStats.sort((a, b) => b.mtime - a.mtime);
+
+        return filesWithStats[0];
+    } catch (error) {
+        return null;
+    }
+}
+
+// Функція для знаходження наступного номера файлу (з урахуванням дати)
 function getNextOutputNumber() {
+    // Отримуємо сьогоднішню дату в форматі YYYYMMDD
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
     try {
         const files = fs.readdirSync(RESULT_AUDIO_DIR);
-        const pattern = /^output_dictation_(\d{4})\.mp3$/;
+        // Шукаємо файли тільки з сьогоднішньою датою
+        const pattern = new RegExp(`^output_dictation_${today}_(\\d{4})\\.mp3$`);
 
         let maxNumber = 0;
         files.forEach(file => {
@@ -68,39 +117,35 @@ function getNextOutputNumber() {
             }
         });
 
-        return maxNumber + 1;
+        return { date: today, number: maxNumber + 1 };
     } catch (error) {
         // Якщо папка не існує або помилка - починаємо з 1
-        return 1;
+        return { date: today, number: 1 };
     }
 }
 
 const run = async () => {
-    // Перевіряємо чи існує вхідний файл
-    if (!fs.existsSync(INPUT_FILE)) {
-        console.error(`❌ Error: File "${INPUT_FILE}" not found in audio-source/`);
-        console.log(`💡 Place your audio file in: audio-source/${INPUT_FILENAME}`);
-        process.exit(1);
-    }
-
     try {
         console.time('Processing Time');
-        console.log(`📂 Input: audio-source/${INPUT_FILENAME}`);
-        console.log(`📝 Output #${OUTPUT_NUMBER}:`);
-        console.log(`   - result/audio/output_dictation_${OUTPUT_NUMBER}.mp3`);
-        console.log(`   - result/text/transcript_${OUTPUT_NUMBER}.txt`);
+        console.log(`🎵 Auto-selected: audio-source/${INPUT_FILENAME}`);
+        console.log(`📝 Output: ${OUTPUT_DATE}_${OUTPUT_NUMBER}`);
+        console.log(`   - result/audio/${OUTPUT_FILENAME} (dictation)`);
+        console.log(`   - result/shadowing/${OUTPUT_FILENAME} (shadowing)`);
+        console.log(`   - result/text/transcript_${OUTPUT_DATE}_${OUTPUT_NUMBER}.txt`);
         console.log('');
 
         // Створюємо папки якщо їх немає
         await fs.ensureDir(RESULT_AUDIO_DIR);
+        await fs.ensureDir(RESULT_SHADOWING_DIR);
         await fs.ensureDir(RESULT_TEXT_DIR);
         await fs.emptyDir(TEMP_DIR);
 
         console.log('🕵️  1. Analyzing audio format...');
         const audioFormat = await getAudioFormat(INPUT_FILE);
 
-        console.log('🔇 2. Generating matching silence...');
-        await generateSilenceFile(PAUSE_BETWEEN_REPEATS, SILENCE_FILE, audioFormat);
+        console.log('🔇 2. Generating silence files...');
+        await generateSilenceFile(PAUSE_BETWEEN_REPEATS, SILENCE_FILE_SHORT, audioFormat);
+        await generateSilenceFile(PAUSE_AFTER_SEGMENT, SILENCE_FILE_LONG, audioFormat);
 
         console.log('🔍 3. Detecting phrases using Whisper AI...');
         const segments = await detectSegments(INPUT_FILE);
@@ -124,16 +169,21 @@ const run = async () => {
         console.log('📝 6. Building playlist...');
         const concatListPath = createConcatList(segmentFiles);
 
-        console.log('💾 7. Merging final file...');
+        console.log('💾 7. Merging dictation file...');
         await mergeAudio(concatListPath, OUTPUT_FILE, audioFormat);
 
-        console.log('🧹 8. Cleanup...');
+        console.log('🎭 8. Creating shadowing file...');
+        const shadowingListPath = await createShadowingConcatList(segmentFiles, validSegments, audioFormat);
+        await mergeAudio(shadowingListPath, OUTPUT_SHADOWING_FILE, audioFormat);
+
+        console.log('🧹 9. Cleanup...');
         await fs.remove(TEMP_DIR);
 
         console.log('');
-        console.log(`🎉 Done! Output #${OUTPUT_NUMBER} created:`);
-        console.log(`   📀 Audio: result/audio/output_dictation_${OUTPUT_NUMBER}.mp3`);
-        console.log(`   📄 Text:  result/text/transcript_${OUTPUT_NUMBER}.txt`);
+        console.log(`🎉 Done! Output ${OUTPUT_DATE}_${OUTPUT_NUMBER} created:`);
+        console.log(`   📀 Dictation: result/audio/${OUTPUT_FILENAME}`);
+        console.log(`   🎭 Shadowing: result/shadowing/${OUTPUT_FILENAME}`);
+        console.log(`   📄 Text:      result/text/transcript_${OUTPUT_DATE}_${OUTPUT_NUMBER}.txt`);
         console.timeEnd('Processing Time');
 
     } catch (err) {
@@ -176,9 +226,10 @@ function detectSegments(file) {
     return new Promise((resolve, reject) => {
         const whisperScript = path.join(__dirname, 'whisper_detector.py');
         const pythonPath = path.join(__dirname, 'venv', 'bin', 'python3');
-        const cmd = `"${pythonPath}" "${whisperScript}" "${file}" large "${WHISPER_PROMPT}"`;
+        const cmd = `"${pythonPath}" "${whisperScript}" "${file}" large "${WHISPER_PROMPT}" "${DEVICE}"`;
 
         console.log('   (This may take a minute on first run - downloading model...)');
+        console.log(`   Device: ${DEVICE.toUpperCase()}`);
         console.log(`   Context: "${WHISPER_PROMPT}"`);
 
         exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
@@ -263,12 +314,45 @@ function formatTime(seconds) {
 function createConcatList(files) {
     const listPath = path.join(TEMP_DIR, 'list.txt');
     let content = '';
-    files.forEach(f => {
+    files.forEach((f, segmentIndex) => {
         for (let i = 0; i < REPEAT_COUNT; i++) {
             content += `file '${f}'\n`;
-            content += `file '${SILENCE_FILE}'\n`;
+
+            // Після кожного повтору - коротка пауза
+            if (i < REPEAT_COUNT - 1) {
+                content += `file '${SILENCE_FILE_SHORT}'\n`;
+            }
+        }
+
+        // Після всіх повторів сегмента - довга пауза (крім останнього сегмента)
+        if (segmentIndex < files.length - 1) {
+            content += `file '${SILENCE_FILE_LONG}'\n`;
         }
     });
+    fs.writeFileSync(listPath, content);
+    return listPath;
+}
+
+async function createShadowingConcatList(files, segments, audioFormat) {
+    const listPath = path.join(TEMP_DIR, 'shadowing_list.txt');
+    let content = '';
+
+    for (let i = 0; i < files.length; i++) {
+        const segmentFile = files[i];
+        const segment = segments[i];
+
+        // Додаємо сегмент
+        content += `file '${segmentFile}'\n`;
+
+        // Генеруємо тишу з тією ж тривалістю що й сегмент (округлено до цілих секунд)
+        const silenceDuration = Math.ceil(segment.duration);
+        const silenceFile = path.join(TEMP_DIR, `silence_segment_${i}.mp3`);
+        await generateSilenceFile(silenceDuration, silenceFile, audioFormat);
+
+        // Додаємо тишу
+        content += `file '${silenceFile}'\n`;
+    }
+
     fs.writeFileSync(listPath, content);
     return listPath;
 }

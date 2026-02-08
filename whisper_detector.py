@@ -11,7 +11,7 @@ import warnings
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
-def detect_speech_segments(audio_path, model_size='small', initial_prompt=''):
+def detect_speech_segments(audio_path, model_size='small', initial_prompt='', device='cuda'):
     """
     Detect speech segments using Whisper
 
@@ -19,13 +19,14 @@ def detect_speech_segments(audio_path, model_size='small', initial_prompt=''):
         audio_path: Path to audio file
         model_size: Whisper model size (tiny, base, small, medium, large)
         initial_prompt: Optional prompt to guide transcription style
+        device: Device to use ('cuda' for GPU, 'cpu' for CPU)
 
     Returns:
         List of segments with start/end timestamps and text
     """
     # Load Whisper model
-    print(f"Loading Whisper model '{model_size}'...", file=sys.stderr)
-    model = whisper.load_model(model_size)
+    print(f"Loading Whisper model '{model_size}' on {device.upper()}...", file=sys.stderr)
+    model = whisper.load_model(model_size, device=device)
 
     # Transcribe with word timestamps
     print(f"Transcribing audio...", file=sys.stderr)
@@ -81,9 +82,10 @@ def main():
     audio_path = sys.argv[1]
     model_size = sys.argv[2] if len(sys.argv) > 2 else 'small'
     initial_prompt = sys.argv[3] if len(sys.argv) > 3 else ''
+    device = sys.argv[4] if len(sys.argv) > 4 else 'cuda'
 
     try:
-        segments = detect_speech_segments(audio_path, model_size, initial_prompt)
+        segments = detect_speech_segments(audio_path, model_size, initial_prompt, device)
         result = {
             'success': True,
             'segments': segments,

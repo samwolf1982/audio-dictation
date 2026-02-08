@@ -43,18 +43,21 @@ ffmpeg -version
 ```
 audio-source/              # Place your input audio files here
 result/
-  ├── audio/              # Generated dictation audio files
+  ├── audio/              # Generated dictation audio files (with repetitions)
+  ├── shadowing/          # Generated shadowing audio files (segment + pause)
   └── text/               # Generated transcripts with timestamps
 ```
 
 ## Usage
 
-1. Place your audio file in `audio-source/` folder
-2. Configure `config.json`:
+1. Place your audio file (.mp3) in `audio-source/` folder
+   - The **latest modified file** will be automatically selected
+2. Configure `config.json` (optional):
    ```json
    {
-     "audioFile": "lesson.mp3",
-     "whisperPrompt": "Description of the video content"
+     "whisperPrompt": "Description of the video content",
+     "repeatCount": 2,
+     "pauseBetweenRepeats": 3
    }
    ```
 3. Run:
@@ -62,34 +65,44 @@ result/
    make run
    ```
 
-Output files are automatically numbered:
-- `result/audio/output_dictation_0001.mp3` - audio for dictation with repetitions
-- `result/text/transcript_0001.txt` - text with timestamps for each sentence
+To clean all generated files:
+```bash
+make clear
+```
 
-Next run will create `0002`, then `0003`, etc.
+Output files are automatically named with date + number:
+- `result/audio/output_dictation_20250208_0001.mp3` - **Dictation**: phrases repeated multiple times with pauses
+- `result/shadowing/output_dictation_20250208_0001.mp3` - **Shadowing**: each phrase followed by silence (same duration) for practice
+- `result/text/transcript_20250208_0001.txt` - text with timestamps for each sentence
+
+Next run today will create `20250208_0002`, tomorrow will start with `20250209_0001`.
 
 ## Configuration
 
-Edit `config.json` for each video:
+Edit `config.json`:
 
 ```json
 {
-  "audioFile": "audio.mp3",
   "whisperPrompt": "Steven looks at a picture of a big red bus and talks about it.",
   "repeatCount": 2,
   "pauseBetweenRepeats": 3,
-  "minSegmentLength": 0.4
+  "pauseAfterSegment": 10,
+  "minSegmentLength": 0.4,
+  "device": "cuda"
 }
 ```
 
 **Parameters:**
-- `audioFile` - Input audio file name (from `audio-source/` folder, filename only)
 - `whisperPrompt` - Video description (helps Whisper recognize better, leave empty if unknown)
 - `repeatCount` - How many times to repeat each phrase (default: 2)
-- `pauseBetweenRepeats` - Pause between repetitions in seconds (default: 3)
+- `pauseBetweenRepeats` - Short pause between repetitions in seconds (default: 3)
+- `pauseAfterSegment` - Long pause after all repetitions, before next phrase (default: 10)
 - `minSegmentLength` - Minimum segment length to filter noise (default: 0.4)
+- `device` - Processing device: `"cuda"` for GPU (fast), `"cpu"` for CPU (slow) (default: "cuda")
 
-**Important:** Change `whisperPrompt` for each video - it improves recognition quality for specific words!
+**Note:**
+- Audio file is auto-selected (latest .mp3 from `audio-source/`)
+- Change `whisperPrompt` for better recognition of specific words!
 
 ## How it works
 

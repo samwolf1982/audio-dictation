@@ -47,6 +47,7 @@ audio-source/*.mp3
 audio-source/*.wav
 temp_segments/
 result/audio/*.mp3
+result/shadowing/*.mp3
 result/text/*.txt
 
 # Old output files (legacy)
