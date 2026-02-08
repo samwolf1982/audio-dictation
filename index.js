@@ -3,33 +3,97 @@ const fs = require('fs-extra');
 const path = require('path');
 const { exec } = require('child_process');
 
-// ================= НАЛАШТУВАННЯ =================
-const INPUT_FILE = process.argv[2] || 'audio.mp3';
-const OUTPUT_FILE = 'output_dictation.mp3';
-const TRANSCRIPT_FILE = 'transcript.txt';
+// ================= ЗАВАНТАЖЕННЯ КОНФІГУ =================
+const CONFIG_FILE = path.join(__dirname, 'config.json');
+let config;
 
-const REPEAT_COUNT = 3;
-const PAUSE_BETWEEN_REPEATS = 3;
+try {
+    const configData = fs.readFileSync(CONFIG_FILE, 'utf-8');
+    config = JSON.parse(configData);
+} catch (error) {
+    console.error(`❌ Error reading config.json: ${error.message}`);
+    console.log('Creating default config.json...');
+    config = {
+        audioFile: 'audio.mp3',
+        whisperPrompt: '',
+        repeatCount: 2,
+        pauseBetweenRepeats: 3,
+        minSegmentLength: 0.4
+    };
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
 
-// Мінімальна довжина сегмента (фільтрує шум)
-const MIN_SEGMENT_LENGTH = 0.4;
+// Параметри з конфігу
+const REPEAT_COUNT = config.repeatCount;
+const PAUSE_BETWEEN_REPEATS = config.pauseBetweenRepeats;
+const MIN_SEGMENT_LENGTH = config.minSegmentLength;
+const WHISPER_PROMPT = config.whisperPrompt;
 
-// Whisper: опис контексту відео (покращує розпізнавання)
-// const WHISPER_PROMPT = "Kerri shares her special recipe for making a delicious omelet.";
-const WHISPER_PROMPT = "Steven looks at a picture of a big red bus and talks about it.";
-// ================================================
-
+// Папки
+const AUDIO_SOURCE_DIR = path.join(__dirname, 'audio-source');
+const RESULT_AUDIO_DIR = path.join(__dirname, 'result', 'audio');
+const RESULT_TEXT_DIR = path.join(__dirname, 'result', 'text');
 const TEMP_DIR = path.join(__dirname, 'temp_segments');
+
+// Вхідний файл (з audio-source/)
+const INPUT_FILENAME = config.audioFile;
+const INPUT_FILE = path.join(AUDIO_SOURCE_DIR, INPUT_FILENAME);
+
+// Знаходимо наступний номер для output файлів
+const nextNumber = getNextOutputNumber();
+if (nextNumber > 9999) {
+    console.error('❌ Error: Output file limit reached (9999). Please clean up result folder.');
+    process.exit(1);
+}
+
+const OUTPUT_NUMBER = nextNumber.toString().padStart(4, '0');
+const OUTPUT_FILE = path.join(RESULT_AUDIO_DIR, `output_dictation_${OUTPUT_NUMBER}.mp3`);
+const TRANSCRIPT_FILE = path.join(RESULT_TEXT_DIR, `transcript_${OUTPUT_NUMBER}.txt`);
 const SILENCE_FILE = path.join(TEMP_DIR, 'silence.mp3');
 
+// =======================================================
+
+// Функція для знаходження наступного номера файлу
+function getNextOutputNumber() {
+    try {
+        const files = fs.readdirSync(RESULT_AUDIO_DIR);
+        const pattern = /^output_dictation_(\d{4})\.mp3$/;
+
+        let maxNumber = 0;
+        files.forEach(file => {
+            const match = file.match(pattern);
+            if (match) {
+                const num = parseInt(match[1], 10);
+                if (num > maxNumber) maxNumber = num;
+            }
+        });
+
+        return maxNumber + 1;
+    } catch (error) {
+        // Якщо папка не існує або помилка - починаємо з 1
+        return 1;
+    }
+}
+
 const run = async () => {
+    // Перевіряємо чи існує вхідний файл
     if (!fs.existsSync(INPUT_FILE)) {
-        console.error(`❌ Error: File "${INPUT_FILE}" not found.`);
+        console.error(`❌ Error: File "${INPUT_FILE}" not found in audio-source/`);
+        console.log(`💡 Place your audio file in: audio-source/${INPUT_FILENAME}`);
         process.exit(1);
     }
 
     try {
         console.time('Processing Time');
+        console.log(`📂 Input: audio-source/${INPUT_FILENAME}`);
+        console.log(`📝 Output #${OUTPUT_NUMBER}:`);
+        console.log(`   - result/audio/output_dictation_${OUTPUT_NUMBER}.mp3`);
+        console.log(`   - result/text/transcript_${OUTPUT_NUMBER}.txt`);
+        console.log('');
+
+        // Створюємо папки якщо їх немає
+        await fs.ensureDir(RESULT_AUDIO_DIR);
+        await fs.ensureDir(RESULT_TEXT_DIR);
         await fs.emptyDir(TEMP_DIR);
 
         console.log('🕵️  1. Analyzing audio format...');
@@ -66,9 +130,10 @@ const run = async () => {
         console.log('🧹 8. Cleanup...');
         await fs.remove(TEMP_DIR);
 
-        console.log(`🎉 Done!`);
-        console.log(`   Audio: ${OUTPUT_FILE}`);
-        console.log(`   Transcript: ${TRANSCRIPT_FILE}`);
+        console.log('');
+        console.log(`🎉 Done! Output #${OUTPUT_NUMBER} created:`);
+        console.log(`   📀 Audio: result/audio/output_dictation_${OUTPUT_NUMBER}.mp3`);
+        console.log(`   📄 Text:  result/text/transcript_${OUTPUT_NUMBER}.txt`);
         console.timeEnd('Processing Time');
 
     } catch (err) {

@@ -42,11 +42,16 @@ env/
 ENV/
 *.egg-info/
 
-# Audio files
-*.mp3
-*.wav
+# Audio files (but keep result folders)
+audio-source/*.mp3
+audio-source/*.wav
 temp_segments/
+result/audio/*.mp3
+result/text/*.txt
 
-# Transcripts
+# Old output files (legacy)
+output_dictation.mp3
 transcript.txt
-*_transcript.txt
+
+# Config
+config.json

@@ -38,30 +38,58 @@ Make sure ffmpeg is installed:
 ffmpeg -version
 ```
 
-## Usage
+## Project Structure
 
-```bash
-node index.js your_audio.mp3
+```
+audio-source/              # Place your input audio files here
+result/
+  ├── audio/              # Generated dictation audio files
+  └── text/               # Generated transcripts with timestamps
 ```
 
-Output:
-- `output_dictation.mp3` - audio for dictation with repetitions
-- `transcript.txt` - text with timestamps for each sentence
+## Usage
+
+1. Place your audio file in `audio-source/` folder
+2. Configure `config.json`:
+   ```json
+   {
+     "audioFile": "lesson.mp3",
+     "whisperPrompt": "Description of the video content"
+   }
+   ```
+3. Run:
+   ```bash
+   make run
+   ```
+
+Output files are automatically numbered:
+- `result/audio/output_dictation_0001.mp3` - audio for dictation with repetitions
+- `result/text/transcript_0001.txt` - text with timestamps for each sentence
+
+Next run will create `0002`, then `0003`, etc.
 
 ## Configuration
 
-Edit parameters in `index.js`:
+Edit `config.json` for each video:
 
-```javascript
-const REPEAT_COUNT = 3;              // How many times to repeat each phrase
-const PAUSE_BETWEEN_REPEATS = 3;     // Pause between repetitions (seconds)
-const MIN_SEGMENT_LENGTH = 0.4;      // Minimum segment length (noise filter)
-
-// Video description - helps Whisper recognize better
-const WHISPER_PROMPT = "Steven looks at a picture of a big red bus and talks about it.";
+```json
+{
+  "audioFile": "audio.mp3",
+  "whisperPrompt": "Steven looks at a picture of a big red bus and talks about it.",
+  "repeatCount": 2,
+  "pauseBetweenRepeats": 3,
+  "minSegmentLength": 0.4
+}
 ```
 
-**Important:** Change `WHISPER_PROMPT` for each video - it improves recognition quality for specific words!
+**Parameters:**
+- `audioFile` - Input audio file name (from `audio-source/` folder, filename only)
+- `whisperPrompt` - Video description (helps Whisper recognize better, leave empty if unknown)
+- `repeatCount` - How many times to repeat each phrase (default: 2)
+- `pauseBetweenRepeats` - Pause between repetitions in seconds (default: 3)
+- `minSegmentLength` - Minimum segment length to filter noise (default: 0.4)
+
+**Important:** Change `whisperPrompt` for each video - it improves recognition quality for specific words!
 
 ## How it works
 

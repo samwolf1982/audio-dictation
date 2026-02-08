@@ -38,30 +38,58 @@ python3 -m venv venv
 ffmpeg -version
 ```
 
-## Використання
+## Структура проєкту
 
-```bash
-node index.js your_audio.mp3
+```
+audio-source/              # Розміщуйте тут вхідні аудіо файли
+result/
+  ├── audio/              # Згенеровані аудіо для диктанту
+  └── text/               # Згенеровані транскрипти з таймінгами
 ```
 
-Результат:
-- `output_dictation.mp3` - аудіо для диктанту з повтореннями
-- `transcript.txt` - текст з таймінгами кожного речення
+## Використання
+
+1. Покладіть ваш аудіо файл в папку `audio-source/`
+2. Налаштуйте `config.json`:
+   ```json
+   {
+     "audioFile": "lesson.mp3",
+     "whisperPrompt": "Опис змісту відео"
+   }
+   ```
+3. Запустіть:
+   ```bash
+   make run
+   ```
+
+Вихідні файли автоматично нумеруються:
+- `result/audio/output_dictation_0001.mp3` - аудіо для диктанту з повтореннями
+- `result/text/transcript_0001.txt` - текст з таймінгами кожного речення
+
+Наступний запуск створить `0002`, потім `0003`, і так далі.
 
 ## Налаштування
 
-Відредагуйте параметри в `index.js`:
+Відредагуйте `config.json` для кожного відео:
 
-```javascript
-const REPEAT_COUNT = 3;              // Скільки разів повторювати фразу
-const PAUSE_BETWEEN_REPEATS = 3;     // Пауза між повтореннями (секунди)
-const MIN_SEGMENT_LENGTH = 0.4;      // Мінімальна довжина фрагмента (фільтр шуму)
-
-// Опис відео - допомагає Whisper краще розпізнавати
-const WHISPER_PROMPT = "Steven looks at a picture of a big red bus and talks about it.";
+```json
+{
+  "audioFile": "audio.mp3",
+  "whisperPrompt": "Steven looks at a picture of a big red bus and talks about it.",
+  "repeatCount": 2,
+  "pauseBetweenRepeats": 3,
+  "minSegmentLength": 0.4
+}
 ```
 
-**Важливо:** Змінюйте `WHISPER_PROMPT` для кожного відео - це покращує якість розпізнавання специфічних слів!
+**Параметри:**
+- `audioFile` - Назва вхідного аудіо файлу (з папки `audio-source/`, тільки ім'я файлу)
+- `whisperPrompt` - Опис відео (допомагає Whisper краще розпізнавати, залиште пустим якщо невідомо)
+- `repeatCount` - Скільки разів повторювати фразу (за замовчуванням: 2)
+- `pauseBetweenRepeats` - Пауза між повтореннями в секундах (за замовчуванням: 3)
+- `minSegmentLength` - Мінімальна довжина сегмента для фільтрації шуму (за замовчуванням: 0.4)
+
+**Важливо:** Змінюйте `whisperPrompt` для кожного відео - це покращує якість розпізнавання специфічних слів!
 
 ## Як це працює
 

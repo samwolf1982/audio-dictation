@@ -1,0 +1,7 @@
+{
+  "audioFile": "audio.mp3",
+  "whisperPrompt": "Example: Steven looks at a picture of a big red bus and talks about it.",
+  "repeatCount": 2,
+  "pauseBetweenRepeats": 3,
+  "minSegmentLength": 0.4
+}
