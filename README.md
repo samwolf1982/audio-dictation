@@ -50,7 +50,8 @@ result/
 
 ## Usage
 
-1. Place your audio file (.mp3) in `audio-source/` folder
+1. Place your audio or video file in `audio-source/` folder
+   - Supported formats: `.mp3`, `.mp4`, `.m4a`, `.wav`, `.avi`, `.mkv`, `.mov`
    - The **latest modified file** will be automatically selected
 2. Configure `config.json` (optional):
    ```json
@@ -84,6 +85,7 @@ Edit `config.json`:
 ```json
 {
   "whisperPrompt": "Steven looks at a picture of a big red bus and talks about it.",
+  "whisperModel": "large-v3",
   "repeatCount": 2,
   "pauseBetweenRepeats": 3,
   "pauseAfterSegment": 10,
@@ -94,6 +96,7 @@ Edit `config.json`:
 
 **Parameters:**
 - `whisperPrompt` - Video description (helps Whisper recognize better, leave empty if unknown)
+- `whisperModel` - Whisper model to use: `"large-v3"` (best quality), `"large"`, `"medium"`, `"small"`, `"turbo"` (fast) (default: "large-v3")
 - `repeatCount` - How many times to repeat each phrase (default: 2)
 - `pauseBetweenRepeats` - Short pause between repetitions in seconds (default: 3)
 - `pauseAfterSegment` - Long pause after all repetitions, before next phrase (default: 10)
