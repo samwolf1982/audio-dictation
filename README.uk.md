@@ -50,7 +50,8 @@ result/
 
 ## Використання
 
-1. Покладіть ваш аудіо файл (.mp3) в папку `audio-source/`
+1. Покладіть ваш аудіо або відео файл в папку `audio-source/`
+   - Підтримувані формати: `.mp3`, `.mp4`, `.m4a`, `.wav`, `.avi`, `.mkv`, `.mov`
    - **Останній змінений файл** буде вибрано автоматично
 2. Налаштуйте `config.json` (опціонально):
    ```json
@@ -84,6 +85,7 @@ make clear
 ```json
 {
   "whisperPrompt": "Steven looks at a picture of a big red bus and talks about it.",
+  "whisperModel": "large-v3",
   "repeatCount": 2,
   "pauseBetweenRepeats": 3,
   "pauseAfterSegment": 10,
@@ -94,6 +96,7 @@ make clear
 
 **Параметри:**
 - `whisperPrompt` - Опис відео (допомагає Whisper краще розпізнавати, залиште пустим якщо невідомо)
+- `whisperModel` - Модель Whisper: `"large-v3"` (найкраща якість), `"large"`, `"medium"`, `"small"`, `"turbo"` (швидка) (за замовчуванням: "large-v3")
 - `repeatCount` - Скільки разів повторювати фразу (за замовчуванням: 2)
 - `pauseBetweenRepeats` - Коротка пауза між повтореннями в секундах (за замовчуванням: 3)
 - `pauseAfterSegment` - Довга пауза після всіх повторів, перед наступною фразою (за замовчуванням: 10)

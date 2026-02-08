@@ -1,15 +1,101 @@
 #!/usr/bin/env python3
 """
-Speech segmentation using Whisper
-Outputs JSON with speech segments timestamps based on sentences
+Speech segmentation using Whisper + spaCy
+Outputs JSON with speech segments timestamps based on sentences and logical breaks
 """
 import sys
 import json
 import whisper
+import spacy
 import warnings
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
+
+# Load spaCy model for NLP segmentation
+try:
+    nlp = spacy.load("en_core_web_lg")
+except OSError:
+    print("Downloading spaCy model...", file=sys.stderr)
+    import os
+    os.system("python -m spacy download en_core_web_lg")
+    nlp = spacy.load("en_core_web_lg")
+
+def split_long_sentence_with_spacy(text, words, max_duration=7.0):
+    """
+    Split long sentence into logical chunks using spaCy
+
+    Args:
+        text: Full sentence text
+        words: List of word dicts with 'word', 'start', 'end' keys
+        max_duration: Maximum duration in seconds for a chunk
+
+    Returns:
+        List of chunks with start, end, duration, text
+    """
+    if not words:
+        return []
+
+    duration = words[-1]['end'] - words[0]['start']
+
+    # If short enough, return as is
+    if duration <= max_duration:
+        return [{
+            'start': words[0]['start'],
+            'end': words[-1]['end'],
+            'duration': duration,
+            'text': text,
+            'words': words
+        }]
+
+    # Use spaCy to parse
+    doc = nlp(text)
+
+    # Find split points: conjunctions (and, but, or, so) and subordinate conjunctions
+    split_indices = []
+    word_idx = 0
+
+    for i, token in enumerate(doc):
+        # Split at coordinating conjunctions and commas in long sentences
+        if token.dep_ in ['cc', 'punct'] and token.text.lower() in [',', 'and', 'but', 'or', 'so']:
+            # Find corresponding word index
+            for j in range(word_idx, len(words)):
+                if words[j]['word'].strip().lower() == token.text.lower():
+                    split_indices.append(j)
+                    word_idx = j + 1
+                    break
+
+    # If no split points found, split by word count
+    if not split_indices:
+        mid = len(words) // 2
+        split_indices = [mid]
+
+    # Create chunks
+    chunks = []
+    start_idx = 0
+
+    for split_idx in split_indices + [len(words)]:
+        if split_idx > start_idx:
+            chunk_words = words[start_idx:split_idx]
+            if chunk_words:
+                chunk_text = ' '.join([w['word'] for w in chunk_words])
+                chunks.append({
+                    'start': chunk_words[0]['start'],
+                    'end': chunk_words[-1]['end'],
+                    'duration': chunk_words[-1]['end'] - chunk_words[0]['start'],
+                    'text': chunk_text.strip(),
+                    'words': chunk_words
+                })
+            start_idx = split_idx
+
+    return chunks if chunks else [{
+        'start': words[0]['start'],
+        'end': words[-1]['end'],
+        'duration': words[-1]['end'] - words[0]['start'],
+        'text': text,
+        'words': words
+    }]
+
 
 def detect_speech_segments(audio_path, model_size='small', initial_prompt='', device='cuda'):
     """
@@ -52,25 +138,91 @@ def detect_speech_segments(audio_path, model_size='small', initial_prompt='', de
         initial_prompt=initial_prompt if initial_prompt else None
     )
 
-    # Extract segments with padding
-    PADDING_END = 0.5  # Додаємо 0.5 сек в кінці щоб не обрізати останнє слово
+    # Extract segments BY PUNCTUATION (sentence-based)
+    PADDING_END = 0.2  # Невеликий padding 0.1 сек
 
-    segments = []
-    total_segments = len(result['segments'])
+    # Отримуємо всі слова з таймінгами
+    all_words = []
+    for segment in result['segments']:
+        if 'words' in segment:
+            all_words.extend(segment['words'])
 
-    for i, segment in enumerate(result['segments']):
-        start = segment['start']
+    if not all_words:
+        # Fallback: якщо немає word timestamps, використати стандартні сегменти
+        segments = []
+        for i, segment in enumerate(result['segments']):
+            start = segment['start']
+            is_last = (i == len(result['segments']) - 1)
+            end = segment['end'] if is_last else segment['end'] + PADDING_END
+            segments.append({
+                'start': round(start, 3),
+                'end': round(end, 3),
+                'duration': round(end - start, 3),
+                'text': segment['text'].strip()
+            })
+        return segments
 
-        # Для останнього сегмента не додаємо padding (може вийти за межі файлу)
-        is_last = (i == total_segments - 1)
-        end = segment['end'] if is_last else segment['end'] + PADDING_END
+    # Групуємо слова по реченнях (по пунктуації)
+    sentence_segments = []
+    current_words = []
+    sentence_endings = {'.', '!', '?'}
 
-        segments.append({
-            'start': round(start, 3),
-            'end': round(end, 3),
-            'duration': round(end - start, 3),
-            'text': segment['text'].strip()
+    for word_info in all_words:
+        word = word_info['word']
+        current_words.append(word_info)
+
+        # Перевіряємо чи закінчується речення
+        if any(word.rstrip().endswith(punct) for punct in sentence_endings):
+            # Створюємо сегмент з накопичених слів
+            text = ' '.join([w['word'] for w in current_words])
+            sentence_segments.append({
+                'words': current_words[:],
+                'text': text.strip()
+            })
+            current_words = []
+
+    # Якщо залишились слова без пунктуації в кінці - додати як окремий сегмент
+    if current_words:
+        text = ' '.join([w['word'] for w in current_words])
+        sentence_segments.append({
+            'words': current_words[:],
+            'text': text.strip()
         })
+
+    # Тепер розбиваємо довгі сегменти за допомогою spaCy
+    MAX_SEGMENT_DURATION = 7.0  # Максимум 7 секунд для зручного диктанту
+    segments = []
+
+    for sent_seg in sentence_segments:
+        words = sent_seg['words']
+        text = sent_seg['text']
+
+        if not words:
+            continue
+
+        # Перевіряємо тривалість
+        duration = words[-1]['end'] - words[0]['start']
+
+        if duration > MAX_SEGMENT_DURATION:
+            # Розбити за допомогою spaCy
+            print(f"  Splitting long segment ({duration:.1f}s): {text[:50]}...", file=sys.stderr)
+            chunks = split_long_sentence_with_spacy(text, words, MAX_SEGMENT_DURATION)
+
+            for chunk in chunks:
+                segments.append({
+                    'start': round(chunk['start'], 3),
+                    'end': round(chunk['end'] + PADDING_END, 3),
+                    'duration': round(chunk['end'] - chunk['start'] + PADDING_END, 3),
+                    'text': chunk['text']
+                })
+        else:
+            # Сегмент нормальної довжини - додати як є
+            segments.append({
+                'start': round(words[0]['start'], 3),
+                'end': round(words[-1]['end'] + PADDING_END, 3),
+                'duration': round(words[-1]['end'] - words[0]['start'] + PADDING_END, 3),
+                'text': text
+            })
 
     return segments
 

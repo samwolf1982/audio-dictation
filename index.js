@@ -15,6 +15,7 @@ try {
     console.log('Creating default config.json...');
     config = {
         whisperPrompt: '',
+        whisperModel: 'large-v3',
         repeatCount: 2,
         pauseBetweenRepeats: 3,
         pauseAfterSegment: 10,
@@ -30,6 +31,7 @@ const PAUSE_BETWEEN_REPEATS = config.pauseBetweenRepeats;
 const PAUSE_AFTER_SEGMENT = config.pauseAfterSegment || 10;
 const MIN_SEGMENT_LENGTH = config.minSegmentLength;
 const WHISPER_PROMPT = config.whisperPrompt;
+const WHISPER_MODEL = config.whisperModel || 'large-v3';
 const DEVICE = config.device || 'cuda';
 
 // Папки
@@ -41,11 +43,11 @@ const TEMP_DIR = path.join(__dirname, 'temp_segments');
 const SILENCE_FILE_SHORT = path.join(TEMP_DIR, 'silence_short.mp3');
 const SILENCE_FILE_LONG = path.join(TEMP_DIR, 'silence_long.mp3');
 
-// Автоматично знаходимо найновіший .mp3 файл в audio-source/
-const latestAudioFile = findLatestMp3File(AUDIO_SOURCE_DIR);
+// Автоматично знаходимо найновіший аудіо/відео файл в audio-source/
+const latestAudioFile = findLatestAudioFile(AUDIO_SOURCE_DIR);
 if (!latestAudioFile) {
-    console.error('❌ Error: No .mp3 files found in audio-source/ folder');
-    console.log('💡 Place your audio file (.mp3) in the audio-source/ folder');
+    console.error('❌ Error: No audio/video files found in audio-source/ folder');
+    console.log('💡 Place your file (.mp3, .mp4, .m4a, .wav) in the audio-source/ folder');
     process.exit(1);
 }
 
@@ -69,18 +71,25 @@ const TRANSCRIPT_FILE = path.join(RESULT_TEXT_DIR, `transcript_${OUTPUT_DATE}_${
 
 // =======================================================
 
-// Функція для знаходження найновішого .mp3 файлу
-function findLatestMp3File(dir) {
+// Функція для знаходження найновішого аудіо/відео файлу
+function findLatestAudioFile(dir) {
     try {
         const files = fs.readdirSync(dir);
-        const mp3Files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
 
-        if (mp3Files.length === 0) {
+        // Підтримувані формати
+        const supportedExtensions = ['.mp3', '.mp4', '.m4a', '.wav', '.avi', '.mkv', '.mov'];
+
+        const audioFiles = files.filter(f => {
+            const ext = f.toLowerCase().slice(f.lastIndexOf('.'));
+            return supportedExtensions.includes(ext);
+        });
+
+        if (audioFiles.length === 0) {
             return null;
         }
 
         // Сортуємо по даті модифікації (найновіший перший)
-        const filesWithStats = mp3Files.map(f => {
+        const filesWithStats = audioFiles.map(f => {
             const fullPath = path.join(dir, f);
             const stats = fs.statSync(fullPath);
             return {
@@ -226,9 +235,10 @@ function detectSegments(file) {
     return new Promise((resolve, reject) => {
         const whisperScript = path.join(__dirname, 'whisper_detector.py');
         const pythonPath = path.join(__dirname, 'venv', 'bin', 'python3');
-        const cmd = `"${pythonPath}" "${whisperScript}" "${file}" large "${WHISPER_PROMPT}" "${DEVICE}"`;
+        const cmd = `"${pythonPath}" "${whisperScript}" "${file}" ${WHISPER_MODEL} "${WHISPER_PROMPT}" "${DEVICE}"`;
 
         console.log('   (This may take a minute on first run - downloading model...)');
+        console.log(`   Model: ${WHISPER_MODEL}`);
         console.log(`   Device: ${DEVICE.toUpperCase()}`);
         console.log(`   Context: "${WHISPER_PROMPT}"`);
 

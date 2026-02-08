@@ -42,9 +42,14 @@ env/
 ENV/
 *.egg-info/
 
-# Audio files (but keep result folders)
+# Audio/Video files (but keep result folders)
 audio-source/*.mp3
+audio-source/*.mp4
+audio-source/*.m4a
 audio-source/*.wav
+audio-source/*.avi
+audio-source/*.mkv
+audio-source/*.mov
 temp_segments/
 result/audio/*.mp3
 result/shadowing/*.mp3
